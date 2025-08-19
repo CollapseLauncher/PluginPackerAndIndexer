@@ -34,7 +34,7 @@ public class Program
 {
     private static readonly string[]             AllowedPluginExt             = [".dll", ".exe", ".so", ".dylib"];
     private static readonly SearchValues<string> AllowedPluginExtSearchValues = SearchValues.Create(AllowedPluginExt, StringComparison.OrdinalIgnoreCase);
-    private static readonly string               PackageExtension             = ".zip";
+    private const           string               PackageExtension             = ".zip";
 
     public static int Main(params string[] args)
     {

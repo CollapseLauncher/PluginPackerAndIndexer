@@ -24,7 +24,13 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Hi3Helper.Plugin.Core\Hi3Helper.Plugin.Core.csproj" />
+      <Compile Remove="Hi3Helper.Plugin.Core\**" />
+      <EmbeddedResource Remove="Hi3Helper.Plugin.Core\**" />
+      <None Remove="Hi3Helper.Plugin.Core\**" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="Hi3Helper.Plugin.Core\Hi3Helper.Plugin.Core.csproj" />
     </ItemGroup>
 
 </Project>
