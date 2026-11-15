@@ -1,23 +1,20 @@
-﻿using Hi3Helper.Plugin.Core;
-using Hi3Helper.Plugin.Core.Management;
-using Hi3Helper.Plugin.Core.Update;
-using System;
+﻿using System;
 using System.Buffers;
 using System.Buffers.Text;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Compression;
-using System.Linq;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 // ReSharper disable AccessToDisposedClosure
+// ReSharper disable StringLiteralTypo
+// ReSharper disable InvocationIsCultureSensitive
 
 namespace Indexer;
 
@@ -32,9 +29,8 @@ public class SelfUpdateAssetInfo
 
 public class Program
 {
-    private static readonly string[]             AllowedPluginExt             = [".dll", ".exe", ".so", ".dylib"];
-    private static readonly SearchValues<string> AllowedPluginExtSearchValues = SearchValues.Create(AllowedPluginExt, StringComparison.OrdinalIgnoreCase);
-    private const           string               PackageExtension             = ".zip";
+    private const string ExAllowedPluginExt = ".dll;.exe;.so;.dylib";
+    private const string ExPackageExtension = ".zip";
 
     public static int Main(params string[] args)
     {
@@ -61,7 +57,7 @@ public class Program
             }
 
             string referenceFilePath = Path.Combine(path, "manifest.json");
-            int retCode = WriteToJson(reference, referenceFilePath, assetInfo);
+            int    retCode           = WriteToJson(reference, referenceFilePath, assetInfo);
             return retCode != 0 ? retCode : PackFiles(path, reference, assetInfo);
         }
         catch (Exception ex)
@@ -76,39 +72,38 @@ public class Program
         DateTimeOffset creationDate = reference.PluginCreationDate.ToOffset(reference.PluginCreationDate.Offset);
 
         Console.WriteLine("Plugin has been found!");
-        Console.WriteLine($"  Main Library Path Name: {reference.MainLibraryName}");
-        Console.WriteLine($"  Main Plugin Name: {reference.MainPluginName}");
-        Console.WriteLine($"  Creation Date: {creationDate}");
-        Console.WriteLine($"  Version: {reference.PluginVersion}");
+        Console.WriteLine($"  Main Library Path Name : {reference.MainLibraryName}");
+        Console.WriteLine($"  Main Plugin Name       : {reference.MainPluginName}");
+        Console.WriteLine($"  Creation Date          : {creationDate}");
+        Console.WriteLine($"  Version                : {reference.PluginVersion}");
         Console.Write("Writing metadata info...");
 
         using FileStream referenceFileStream = File.Create(referenceFilePath);
-        using Utf8JsonWriter writer = new Utf8JsonWriter(referenceFileStream, new JsonWriterOptions
+        using Utf8JsonWriter writer = new(referenceFileStream, new JsonWriterOptions
         {
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-            Indented = true,
+            Indented        = true,
             IndentCharacter = ' ',
-            IndentSize = 2,
-            NewLine = "\n"
+            IndentSize      = 2,
+            NewLine         = "\n"
         });
 
         writer.WriteStartObject();
 
-        writer.WriteString(nameof(PluginManifest.MainLibraryName), reference.MainLibraryName);
-        writer.WriteString(nameof(PluginManifest.MainPluginName), reference.MainPluginName);
-        writer.WriteString(nameof(PluginManifest.MainPluginAuthor), reference.MainPluginAuthor);
+        writer.WriteString(nameof(PluginManifest.MainLibraryName),       reference.MainLibraryName);
+        writer.WriteString(nameof(PluginManifest.MainPluginName),        reference.MainPluginName);
+        writer.WriteString(nameof(PluginManifest.MainPluginAuthor),      reference.MainPluginAuthor);
         writer.WriteString(nameof(PluginManifest.MainPluginDescription), reference.MainPluginDescription);
         writer.WriteString(nameof(PluginManifest.PluginStandardVersion), reference.PluginStandardVersion.ToString());
-        writer.WriteString(nameof(PluginManifest.PluginVersion), reference.PluginVersion.ToString());
-        writer.WriteString(nameof(PluginManifest.PluginCreationDate), creationDate);
-        writer.WriteString(nameof(PluginManifest.ManifestDate), reference.ManifestDate);
+        writer.WriteString(nameof(PluginManifest.PluginVersion),         reference.PluginVersion.ToString());
+        writer.WriteString(nameof(PluginManifest.PluginCreationDate),    creationDate);
+        writer.WriteString(nameof(PluginManifest.ManifestDate),          reference.ManifestDate);
         if (reference.PluginAlternativeIcon?.Length != 0)
         {
             writer.WriteString(nameof(PluginManifest.PluginAlternativeIcon), reference.PluginAlternativeIcon);
         }
 
         writer.WriteStartArray("Assets");
-        foreach (var asset in assetInfo)
+        foreach (SelfUpdateAssetInfo asset in assetInfo)
         {
             writer.WriteStartObject();
 
@@ -129,8 +124,8 @@ public class Program
 
     private static int PackFiles(string outputPath, PluginManifest referenceInfo, List<SelfUpdateAssetInfo> fileList)
     {
-        string packageName = $"{Path.GetFileNameWithoutExtension(referenceInfo.MainLibraryName)}_{referenceInfo.PluginVersion}_API-{referenceInfo.PluginStandardVersion}_{referenceInfo.ManifestDate.ToString("yyyyMMdd")}";
-        string packageFilePath = Path.Combine(outputPath, packageName + PackageExtension);
+        string packageName     = $"{Path.GetFileNameWithoutExtension(referenceInfo.MainLibraryName)}_{referenceInfo.PluginVersion}_API-{referenceInfo.PluginStandardVersion}_{referenceInfo.ManifestDate:yyyyMMdd}";
+        string packageFilePath = Path.Combine(outputPath, packageName + ExPackageExtension);
 
         int threads = Environment.ProcessorCount;
 
@@ -139,7 +134,7 @@ public class Program
         try
         {
             using FileStream packageFileStream = File.Create(packageFilePath);
-            using ZipArchive packageWriter = new ZipArchive(packageFileStream, ZipArchiveMode.Create, false, Encoding.UTF8);
+            using ZipArchive packageWriter     = new(packageFileStream, ZipArchiveMode.Create, false, Encoding.UTF8);
 
             fileList.Add(new SelfUpdateAssetInfo
             {
@@ -148,14 +143,14 @@ public class Program
             });
 
             int length = fileList.Count;
-            int count = 0;
+            int count  = 0;
 
-            Lock thisLock = new Lock();
-            Parallel.ForEach(fileList, CompressBrotliAndCreate);
+            Lock thisLock = new();
+            Parallel.ForEach(fileList, CompressAndCreate);
 
             return 0;
 
-            void CompressBrotliAndCreate(SelfUpdateAssetInfo asset)
+            void CompressAndCreate(SelfUpdateAssetInfo asset)
             {
                 Interlocked.Increment(ref count);
                 int currentCount = count;
@@ -167,25 +162,32 @@ public class Program
                     lastWriteTime = new DateTime(1980, 1, 1, 0, 0, 0);
 
                 Console.WriteLine($"  [{currentCount}/{length}] Compressing asset to buffer: {asset.FilePath}");
-                using MemoryStream compressedStream = new MemoryStream(); 
-                using BrotliStream brotliStream = new BrotliStream(compressedStream, CompressionLevel.SmallestSize);
-                using FileStream fileStream = File.OpenRead(filePath);
+                using FileStream tempStream = File.Open(Path.Combine(Path.GetTempPath(), Path.GetTempFileName()),
+                                                        new FileStreamOptions
+                                                        {
+                                                            Mode    = FileMode.Create,
+                                                            Access  = FileAccess.ReadWrite,
+                                                            Share   = FileShare.ReadWrite,
+                                                            Options = FileOptions.DeleteOnClose
+                                                        });
+                using ZstandardStream compressStream = new(tempStream, CompressionLevel.SmallestSize);
+                using FileStream      fileStream     = File.OpenRead(filePath);
 
-                fileStream.CopyTo(brotliStream);
-                brotliStream.Flush();
+                fileStream.CopyTo(compressStream);
+                compressStream.Flush();
 
-                compressedStream.Position = 0;
+                tempStream.Position = 0;
 
                 using (thisLock.EnterScope())
                 {
                     Console.WriteLine($"  [{currentCount}/{length}] Compress done. Now locking and writing buffer to package for: {asset.FilePath}");
 
-                    string entryBrExt = asset.FilePath + ".br";
-                    ZipArchiveEntry entry = packageWriter.CreateEntry(entryBrExt, CompressionLevel.NoCompression);
+                    string          entryBrExt = asset.FilePath + ".zstd";
+                    ZipArchiveEntry entry      = packageWriter.CreateEntry(entryBrExt, CompressionLevel.NoCompression);
                     entry.LastWriteTime = lastWriteTime;
 
                     using Stream entryStream = entry.Open();
-                    compressedStream.CopyTo(entryStream);
+                    tempStream.CopyTo(entryStream);
                 }
             }
         }
@@ -198,38 +200,47 @@ public class Program
 
     private static FileInfo? FindPluginLibraryAndGetAssets(string dirPath, out List<SelfUpdateAssetInfo> fileList, out PluginManifest? referenceInfo)
     {
-        DirectoryInfo directoryInfo = new DirectoryInfo(dirPath);
-        List<SelfUpdateAssetInfo> fileListRef = [];
-        fileList = fileListRef;
+        DirectoryInfo             directoryInfo       = new(dirPath);
+        List<SelfUpdateAssetInfo> fileListRef         = [];
+        FileInfo?                 mainLibraryFileInfo = null;
+        PluginManifest?           referenceInfoResult = null;
+
+        fileList      = fileListRef;
         referenceInfo = null;
 
-        FileInfo? mainLibraryFileInfo = null;
-        PluginManifest? referenceInfoResult = null;
+        string manifestPath = Path.Combine(dirPath, "manifest.json");
+        if (!File.Exists(manifestPath))
+            return null;
 
-        Parallel.ForEach(directoryInfo.EnumerateFiles("*", SearchOption.AllDirectories).Where(x => !x.Name.Equals("manifest.json", StringComparison.OrdinalIgnoreCase)), Impl);
+        Parallel.ForEach(directoryInfo.EnumerateFiles("*", SearchOption.AllDirectories), Impl);
         referenceInfo = referenceInfoResult;
 
         return mainLibraryFileInfo;
 
         void Impl(FileInfo fileInfo)
         {
+            if (fileInfo.Name.EndsWith("manifest.json", StringComparison.OrdinalIgnoreCase))
+                return;
+
             string fileName = fileInfo.FullName.AsSpan(directoryInfo.FullName.Length).TrimStart("\\/").ToString();
-            if (fileName.EndsWith(PackageExtension, StringComparison.OrdinalIgnoreCase))
+            string filePath = Path.Combine(dirPath, fileName);
+
+            if (fileName.EndsWith(ExPackageExtension, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
             if (mainLibraryFileInfo == null &&
-                IsPluginLibrary(fileInfo, fileName, out PluginManifest? referenceInfoInner))
+                IsPluginLibrary(filePath, fileName, out PluginManifest? referenceInfoInner))
             {
                 Interlocked.Exchange(ref mainLibraryFileInfo, fileInfo);
                 Interlocked.Exchange(ref referenceInfoResult, referenceInfoInner);
             }
 
-            byte[] buffer = ArrayPool<byte>.Shared.Rent(4 << 10);
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(1 << 10);
             try
             {
-                MD5 hash = MD5.Create();
+                using MD5 hash = MD5.Create();
                 using FileStream fileStream = fileInfo.OpenRead();
 
                 int read;
@@ -241,11 +252,11 @@ public class Program
                 hash.TransformFinalBlock(buffer, 0, read);
 
                 byte[] hashBytes = hash.Hash ?? [];
-                SelfUpdateAssetInfo assetInfo = new SelfUpdateAssetInfo
+                SelfUpdateAssetInfo assetInfo = new()
                 {
                     FileHash = hashBytes,
                     FilePath = fileName,
-                    Size = fileInfo.Length
+                    Size     = fileInfo.Length
                 };
 
                 lock (fileListRef)
@@ -260,100 +271,90 @@ public class Program
         }
     }
 
-    private unsafe delegate void* GetPlugin();
-    private unsafe delegate GameVersion* GetVersion();
-
-    private static unsafe bool IsPluginLibrary(FileInfo fileInfo, string fileName, [NotNullWhen(true)] out PluginManifest? referenceInfo)
+    private static unsafe bool IsPluginLibrary(string filePath, string fileName, [NotNullWhen(true)] out PluginManifest? referenceInfo)
     {
         nint handle = nint.Zero;
         referenceInfo = null;
 
-        if (fileInfo.Name.IndexOfAny(AllowedPluginExtSearchValues) < 0)
-        {
+        ReadOnlySpan<char> extension = Path.GetExtension(fileName);
+        if (ExAllowedPluginExt
+            .AsSpan()
+            .IndexOf(extension, StringComparison.OrdinalIgnoreCase) < 0)
             return false;
-        }
+
         char* getPluginNameP = (char*)Utf16StringMarshaller.ConvertToUnmanaged("GetPlugin");
         char* getPluginVersionNameP = (char*)Utf16StringMarshaller.ConvertToUnmanaged("GetPluginVersion");
         char* getGetPluginStandardVersionNameP = (char*)Utf16StringMarshaller.ConvertToUnmanaged("GetPluginStandardVersion");
 
+        void* pluginAbi = null;
         try
         {
-            if (!NativeLibrary.TryLoad(fileInfo.FullName, out handle) ||
+            if (!NativeLibrary.TryLoad(filePath, out handle) ||
                 !NativeLibrary.TryGetExport(handle, "TryGetApiExport", out nint exportAddress) ||
                 exportAddress == nint.Zero)
             {
                 return false;
             }
 
-            delegate* unmanaged[Cdecl]<char*, void**, int> tryGetApiExportCallback = (delegate* unmanaged[Cdecl]<char*, void**, int>)exportAddress;
-
-            nint getPluginP = nint.Zero;
-            int tryResult = tryGetApiExportCallback(getPluginNameP, (void**)&getPluginP);
+            var tryGetApiExportCallback = (delegate* unmanaged[Cdecl]<char*, out nint, int>)exportAddress;
+            int tryResult               = tryGetApiExportCallback(getPluginNameP, out nint getPluginDelegateP);
 
             if (tryResult != 0 ||
-                getPluginP == nint.Zero)
+                getPluginDelegateP == nint.Zero)
             {
                 return false;
             }
 
-            void* pluginP = Marshal.GetDelegateForFunctionPointer<GetPlugin>(getPluginP)();
-            if (pluginP == null)
-            {
+            pluginAbi = ((delegate* unmanaged[Cdecl]<void*>)getPluginDelegateP)();
+            if (pluginAbi == null)
                 return false;
-            }
 
-            IPlugin? plugin = ComInterfaceMarshaller<IPlugin>.ConvertToManaged(pluginP);
-            if (plugin == null)
-            {
+            tryResult = tryGetApiExportCallback(getPluginVersionNameP, out nint getPluginVersionDelegateP);
+            if (tryResult != 0 ||
+                getPluginVersionDelegateP == nint.Zero)
                 return false;
-            }
 
-            tryResult = tryGetApiExportCallback(getPluginVersionNameP, (void**)&getPluginP);
+            GameVersion pluginVersion = *((delegate* unmanaged[Cdecl]<GameVersion*>)getPluginVersionDelegateP)();
+            tryResult = tryGetApiExportCallback(getGetPluginStandardVersionNameP, out nint getPluginStandardVersionDelegateP);
 
             if (tryResult != 0 ||
-                getPluginP == nint.Zero)
-            {
+                getPluginStandardVersionDelegateP == nint.Zero)
                 return false;
-            }
 
-            GameVersion pluginVersion = *Marshal.GetDelegateForFunctionPointer<GetVersion>(getPluginP)();
+            GameVersion pluginStandardVersion = *((delegate* unmanaged[Cdecl]<GameVersion*>)getPluginStandardVersionDelegateP)();
 
-            tryResult = tryGetApiExportCallback(getGetPluginStandardVersionNameP, (void**)&getPluginP);
+            ((delegate* unmanaged[Stdcall]<void*, out char*, int>)(*(*(void***)pluginAbi + 4)))
+                (pluginAbi, out char* pluginNameP);
+            ((delegate* unmanaged[Stdcall]<void*, out char*, int>)(*(*(void***)pluginAbi + 5)))
+                (pluginAbi, out char* pluginDescriptionP);
+            ((delegate* unmanaged[Stdcall]<void*, out char*, int>)(*(*(void***)pluginAbi + 6)))
+                (pluginAbi, out char* pluginAuthorP);
+            ((delegate* unmanaged[Stdcall]<void*, out DateTime*, int>)(*(*(void***)pluginAbi + 7)))
+                (pluginAbi, out DateTime* pluginCreationDateP);
 
-            if (tryResult != 0 ||
-                getPluginP == nint.Zero)
-            {
-                return false;
-            }
-
-            GameVersion pluginStandardVersion = *Marshal.GetDelegateForFunctionPointer<GetVersion>(getPluginP)();
-
-            plugin.GetPluginName(out string? pluginName);
-            plugin.GetPluginAuthor(out string? pluginAuthor);
-            plugin.GetPluginDescription(out string? pluginDescription);
-            plugin.GetPluginCreationDate(out DateTime* pluginCreationDate);
+            string?        pluginName         = GetStringAndReleaseW(pluginNameP);
+            string?        pluginAuthor       = GetStringAndReleaseW(pluginAuthorP);
+            string?        pluginDescription  = GetStringAndReleaseW(pluginDescriptionP);
+            DateTimeOffset pluginCreationDate = *pluginCreationDateP;
 
             referenceInfo = new PluginManifest
             {
-                Assets = [],
-                MainPluginName = pluginName,
-                MainPluginAuthor = pluginAuthor,
+                MainPluginName        = pluginName,
+                MainPluginAuthor      = pluginAuthor,
                 MainPluginDescription = pluginDescription,
-                PluginCreationDate = *pluginCreationDate,
-                PluginVersion = pluginVersion,
+                PluginCreationDate    = pluginCreationDate,
+                PluginVersion         = pluginVersion,
                 PluginStandardVersion = pluginStandardVersion,
-                PluginAlternativeIcon = TryGetAlternateIconData(plugin),
-                MainLibraryName = fileName,
-                ManifestDate = DateTimeOffset.UtcNow
+                PluginAlternativeIcon = TryGetAlternateIconData(pluginAbi),
+                MainLibraryName       = fileName,
+                ManifestDate          = DateTimeOffset.UtcNow
             };
             return true;
         }
         finally
         {
-            if (handle != nint.Zero)
-            {
-                NativeLibrary.Free(handle);
-            }
+            if (pluginAbi != null) Marshal.Release((nint)pluginAbi);
+            if (handle != nint.Zero) NativeLibrary.Free(handle);
         }
     }
 
@@ -363,32 +364,41 @@ public class Program
         Console.WriteLine($"Usage: {execPath} [plugin_dll_directory_path]");
     }
 
-    private static string? TryGetAlternateIconData(IPlugin plugin)
+    private static unsafe string? TryGetAlternateIconData(void* pluginAbi)
     {
         try
         {
-            plugin.GetPluginAppIconUrl(out string? iconUrlOrData);
+            ((delegate* unmanaged[Stdcall]<void*, out char*, int>)(*(*(void***)pluginAbi + 9)))
+                (pluginAbi, out char* iconUrlOrDataP);
+
+            string? iconUrlOrData = GetStringAndReleaseW(iconUrlOrDataP);
             if (string.IsNullOrEmpty(iconUrlOrData))
-            {
                 return null;
-            }
 
             if (Base64.IsValid(iconUrlOrData))
-            {
                 return iconUrlOrData;
-            }
 
-            if (!Uri.TryCreate(iconUrlOrData, UriKind.Absolute, out Uri? iconUrl))
-            {
-                return null;
-            }
-
-            return iconUrl.ToString();
+            return !Uri.TryCreate(iconUrlOrData, UriKind.Absolute, out Uri? iconUrl) ? null : iconUrl.ToString();
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"Error while retrieving plugin alternative icon data: {ex}");
             return null;
+        }
+    }
+
+    private static unsafe string? GetStringAndReleaseW(void* ptr)
+    {
+        if (ptr == null)
+            return null;
+
+        try
+        {
+            return new string((char*)ptr);
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem((nint)ptr);
         }
     }
 }

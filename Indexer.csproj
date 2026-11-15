@@ -2,7 +2,7 @@
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
-        <TargetFramework>net9.0</TargetFramework>
+        <TargetFramework>net11.0</TargetFramework>
         <ImplicitUsings>disable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <Platforms>x64</Platforms>
@@ -19,7 +19,7 @@
         <Company>Collapse Launcher Team</Company>
         <Authors>$(Company). neon-nyan, Cry0, bagusnl, shatyuka, gablm.</Authors>
         <Copyright>Copyright 2022-2025 $(Company)</Copyright>
-        <Version>1.1.0</Version>
+        <Version>1.2.0</Version>
         <Configurations>Debug;Release</Configurations>
     </PropertyGroup>
 
@@ -27,10 +27,6 @@
       <Compile Remove="Hi3Helper.Plugin.Core\**" />
       <EmbeddedResource Remove="Hi3Helper.Plugin.Core\**" />
       <None Remove="Hi3Helper.Plugin.Core\**" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="Hi3Helper.Plugin.Core\Hi3Helper.Plugin.Core.csproj" />
     </ItemGroup>
 
 </Project>
