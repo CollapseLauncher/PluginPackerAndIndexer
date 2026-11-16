@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Compression;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.Marshalling;
 using System.Security.Cryptography;
@@ -15,6 +16,7 @@ using System.Threading.Tasks;
 // ReSharper disable AccessToDisposedClosure
 // ReSharper disable StringLiteralTypo
 // ReSharper disable InvocationIsCultureSensitive
+// ReSharper disable InconsistentNaming
 
 namespace Indexer;
 
@@ -29,6 +31,8 @@ public class SelfUpdateAssetInfo
 
 public class Program
 {
+    public static readonly Guid IID_IPlugin = new("436f6c6c-6170-7365-727f-000000000010");
+
     private const string ExAllowedPluginExt = ".dll;.exe;.so;.dylib";
     private const string ExPackageExtension = ".zip";
 
@@ -170,8 +174,15 @@ public class Program
                                                             Share   = FileShare.ReadWrite,
                                                             Options = FileOptions.DeleteOnClose
                                                         });
+#if NET11_0_OR_GREATER
+                const string CompressionExtension = ".zstd";
                 using ZstandardStream compressStream = new(tempStream, CompressionLevel.SmallestSize);
-                using FileStream      fileStream     = File.OpenRead(filePath);
+#else
+                const string CompressionExtension = ".br";
+                using BrotliStream compressStream = new(tempStream, CompressionLevel.SmallestSize);
+#endif
+
+                using FileStream fileStream = File.OpenRead(filePath);
 
                 fileStream.CopyTo(compressStream);
                 compressStream.Flush();
@@ -182,7 +193,7 @@ public class Program
                 {
                     Console.WriteLine($"  [{currentCount}/{length}] Compress done. Now locking and writing buffer to package for: {asset.FilePath}");
 
-                    string          entryBrExt = asset.FilePath + ".zstd";
+                    string          entryBrExt = asset.FilePath + CompressionExtension;
                     ZipArchiveEntry entry      = packageWriter.CreateEntry(entryBrExt, CompressionLevel.NoCompression);
                     entry.LastWriteTime = lastWriteTime;
 
@@ -207,10 +218,6 @@ public class Program
 
         fileList      = fileListRef;
         referenceInfo = null;
-
-        string manifestPath = Path.Combine(dirPath, "manifest.json");
-        if (!File.Exists(manifestPath))
-            return null;
 
         Parallel.ForEach(directoryInfo.EnumerateFiles("*", SearchOption.AllDirectories), Impl);
         referenceInfo = referenceInfoResult;
@@ -282,11 +289,12 @@ public class Program
             .IndexOf(extension, StringComparison.OrdinalIgnoreCase) < 0)
             return false;
 
-        char* getPluginNameP = (char*)Utf16StringMarshaller.ConvertToUnmanaged("GetPlugin");
-        char* getPluginVersionNameP = (char*)Utf16StringMarshaller.ConvertToUnmanaged("GetPluginVersion");
-        char* getGetPluginStandardVersionNameP = (char*)Utf16StringMarshaller.ConvertToUnmanaged("GetPluginStandardVersion");
+        char* getPluginNameP                   = "GetPlugin".GetPointer();
+        char* getPluginVersionNameP            = "GetPluginVersion".GetPointer();
+        char* getGetPluginStandardVersionNameP = "GetPluginStandardVersion".GetPointer();
 
-        void* pluginAbi = null;
+        nint pluginIUnknownAbi = nint.Zero;
+        nint pluginAbi = nint.Zero;
         try
         {
             if (!NativeLibrary.TryLoad(filePath, out handle) ||
@@ -297,44 +305,33 @@ public class Program
             }
 
             var tryGetApiExportCallback = (delegate* unmanaged[Cdecl]<char*, out nint, int>)exportAddress;
-            int tryResult               = tryGetApiExportCallback(getPluginNameP, out nint getPluginDelegateP);
-
-            if (tryResult != 0 ||
-                getPluginDelegateP == nint.Zero)
+            if (tryGetApiExportCallback(getPluginNameP, out nint getPluginDelegateP) != 0)
             {
                 return false;
             }
 
-            pluginAbi = ((delegate* unmanaged[Cdecl]<void*>)getPluginDelegateP)();
-            if (pluginAbi == null)
+            pluginIUnknownAbi = ((delegate* unmanaged[Cdecl]<nint>)getPluginDelegateP)();
+            if (pluginIUnknownAbi == nint.Zero ||
+                Marshal.QueryInterface(pluginIUnknownAbi, in IID_IPlugin, out pluginAbi) != 0)
                 return false;
 
-            tryResult = tryGetApiExportCallback(getPluginVersionNameP, out nint getPluginVersionDelegateP);
-            if (tryResult != 0 ||
-                getPluginVersionDelegateP == nint.Zero)
+            if (tryGetApiExportCallback(getPluginVersionNameP, out nint getPluginVersionDelegateP) != 0)
                 return false;
 
             GameVersion pluginVersion = *((delegate* unmanaged[Cdecl]<GameVersion*>)getPluginVersionDelegateP)();
-            tryResult = tryGetApiExportCallback(getGetPluginStandardVersionNameP, out nint getPluginStandardVersionDelegateP);
-
-            if (tryResult != 0 ||
-                getPluginStandardVersionDelegateP == nint.Zero)
+            if (tryGetApiExportCallback(getGetPluginStandardVersionNameP, out nint getPluginStandardVersionDelegateP) != 0)
                 return false;
 
             GameVersion pluginStandardVersion = *((delegate* unmanaged[Cdecl]<GameVersion*>)getPluginStandardVersionDelegateP)();
 
-            ((delegate* unmanaged[Stdcall]<void*, out char*, int>)(*(*(void***)pluginAbi + 4)))
-                (pluginAbi, out char* pluginNameP);
-            ((delegate* unmanaged[Stdcall]<void*, out char*, int>)(*(*(void***)pluginAbi + 5)))
-                (pluginAbi, out char* pluginDescriptionP);
-            ((delegate* unmanaged[Stdcall]<void*, out char*, int>)(*(*(void***)pluginAbi + 6)))
-                (pluginAbi, out char* pluginAuthorP);
-            ((delegate* unmanaged[Stdcall]<void*, out DateTime*, int>)(*(*(void***)pluginAbi + 7)))
-                (pluginAbi, out DateTime* pluginCreationDateP);
+            ((delegate* unmanaged[Cdecl]<nint, out nint, int>)(*(*(void***)pluginAbi + 4)))(pluginAbi, out nint pluginNameP);                   // GetPluginName(out string?);
+            ((delegate* unmanaged[Cdecl]<nint, out nint, int>)(*(*(void***)pluginAbi + 5)))(pluginAbi, out nint pluginDescriptionP);            // GetPluginAuthor(out string?);
+            ((delegate* unmanaged[Cdecl]<nint, out nint, int>)(*(*(void***)pluginAbi + 6)))(pluginAbi, out nint pluginAuthorP);                 // GetPluginDescription(out string?);
+            ((delegate* unmanaged[Cdecl]<nint, out DateTime*, int>)(*(*(void***)pluginAbi + 7)))(pluginAbi, out DateTime* pluginCreationDateP); // GetPluginCreationDate(out DateTime*);
 
-            string?        pluginName         = GetStringAndReleaseW(pluginNameP);
-            string?        pluginAuthor       = GetStringAndReleaseW(pluginAuthorP);
-            string?        pluginDescription  = GetStringAndReleaseW(pluginDescriptionP);
+            string?        pluginName         = pluginNameP.GetStringAndReleaseW();
+            string?        pluginAuthor       = pluginAuthorP.GetStringAndReleaseW();
+            string?        pluginDescription  = pluginDescriptionP.GetStringAndReleaseW();
             DateTimeOffset pluginCreationDate = *pluginCreationDateP;
 
             referenceInfo = new PluginManifest
@@ -353,7 +350,8 @@ public class Program
         }
         finally
         {
-            if (pluginAbi != null) Marshal.Release((nint)pluginAbi);
+            if (pluginAbi != nint.Zero) Marshal.Release(pluginAbi);
+            if (pluginIUnknownAbi != nint.Zero) Marshal.Release(pluginIUnknownAbi);
             if (handle != nint.Zero) NativeLibrary.Free(handle);
         }
     }
@@ -364,14 +362,12 @@ public class Program
         Console.WriteLine($"Usage: {execPath} [plugin_dll_directory_path]");
     }
 
-    private static unsafe string? TryGetAlternateIconData(void* pluginAbi)
+    private static unsafe string? TryGetAlternateIconData(nint pluginAbi)
     {
         try
         {
-            ((delegate* unmanaged[Stdcall]<void*, out char*, int>)(*(*(void***)pluginAbi + 9)))
-                (pluginAbi, out char* iconUrlOrDataP);
-
-            string? iconUrlOrData = GetStringAndReleaseW(iconUrlOrDataP);
+            ((delegate* unmanaged[Stdcall]<nint, out nint, int>)(*(*(void***)pluginAbi + 9)))(pluginAbi, out nint iconUrlOrDataP); // GetPluginAppIconUrl(out string?);
+            string? iconUrlOrData = iconUrlOrDataP.GetStringAndReleaseW();
             if (string.IsNullOrEmpty(iconUrlOrData))
                 return null;
 
@@ -386,10 +382,19 @@ public class Program
             return null;
         }
     }
+}
 
-    private static unsafe string? GetStringAndReleaseW(void* ptr)
+file static class Extension
+{
+    internal static char* GetPointer(this string? str)
     {
-        if (ptr == null)
+        ref readonly char pinRef = ref Utf16StringMarshaller.GetPinnableReference(str);
+        return (char*)Unsafe.AsPointer(in pinRef);
+    }
+
+    internal static unsafe string? GetStringAndReleaseW(this nint ptr)
+    {
+        if (ptr == nint.Zero)
             return null;
 
         try
@@ -398,7 +403,7 @@ public class Program
         }
         finally
         {
-            Marshal.FreeCoTaskMem((nint)ptr);
+            Marshal.FreeCoTaskMem(ptr);
         }
     }
 }
